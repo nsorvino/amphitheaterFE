@@ -120,7 +120,7 @@ const styles = StyleSheet.create<Styles>({
   footerNote: {
     fontSize: 14,
     fontFamily: 'EBGaramond_400Regular',
-    color: '#f3e5f5',
+    color: '#ffffff',
     textAlign: 'center',
     opacity: 0.9,
   },

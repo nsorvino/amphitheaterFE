@@ -369,7 +369,7 @@ const ProfileQueue: React.FC = () => {
                     opacity: likeOpacity,
                     transform: [{ rotate: '-30deg' }],
                     position: 'absolute',
-                    top: 50,
+                    top: 85,
                     right: 40,
                     zIndex: 1000,
                   }}
@@ -381,7 +381,7 @@ const ProfileQueue: React.FC = () => {
                     opacity: dislikeOpacity,
                     transform: [{ rotate: '30deg' }],
                     position: 'absolute',
-                    top: 50,
+                    top: 85,
                     left: 40,
                     zIndex: 1000,
                   }}
@@ -480,12 +480,26 @@ const ProfileQueue: React.FC = () => {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: Colors[colorScheme ?? "light"].background }]}>
       {/* Sticky header bar - outside profile rendering */}
       <View style={[styles.headerBar, { top: insets.top }]}>
-        <TouchableOpacity onPress={handleRedoPress}>
-          <Ionicons name="refresh" size={24} color={Colors[colorScheme ?? "light"].text} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleFilterPress}>
-          <Ionicons name="filter" size={24} color={Colors[colorScheme ?? "light"].text} />
-        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={handleRedoPress}>
+            <Ionicons name="refresh" size={24} color={Colors[colorScheme ?? "light"].text} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.headerCenter}>
+          <Image 
+            source={require('@/assets/images/logo_on_white.jpeg')} 
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.headerTitle, { color: Colors[colorScheme ?? "light"].text }]}>
+            amphitheater
+          </Text>
+        </View>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={handleFilterPress}>
+            <Ionicons name="filter" size={24} color={Colors[colorScheme ?? "light"].text} />
+          </TouchableOpacity>
+        </View>
       </View>
       <View style={[styles.container, { paddingTop: insets.top + 45 }]}>{renderProfiles()}</View>
     </SafeAreaView>
@@ -522,7 +536,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 15,
     paddingVertical: 8,
     zIndex: 1000,
@@ -531,6 +544,29 @@ const styles = StyleSheet.create({
     right: 0,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  headerLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  headerRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  headerLogo: {
+    width: 24,
+    height: 24,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontFamily: 'EBGaramond_700Bold',
+    marginLeft: 8,
   },
   imageOverlay: {
     position: 'absolute',

@@ -12,44 +12,25 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { IconButton, TextInput, Card } from 'react-native-paper';
+import { IconButton } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 const API_BASE_URL = 'http://localhost:3000';
 const USER_ID = "41f7f9da-dc0a-4657-a1a5-d70c062bc627"; // TODO: Get from auth context
 
-const FIELDS = ['Film', 'T.V.', 'Video', 'Music'];
-const TITLES_BY_FIELD: Record<string, string[]> = {
-  Film: ['Director', 'Producer', 'Cinematographer', 'Editor', 'Actor', 'Actress'],
-  'T.V.': ['Showrunner', 'Producer', 'Director', 'Writer', 'Actor', 'Actress'],
-  Video: ['Director', 'Producer', 'Editor', 'Videographer', 'Colorist'],
-  Music: ['Producer', 'Engineer', 'Artist', 'Composer', 'Musician', 'Songwriter'],
-};
-
 const MAX_GOALS_WORDS = 300;
 const MAX_BIO_WORDS = 500;
 
-const EditInfo: React.FC = () => {
+const EditBioGoals: React.FC = () => {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const theme = (colorScheme ?? "light") as "light" | "dark";
-
-  // Personal Info State
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState<Date>(new Date(2000, 0, 1));
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // Fields & Titles State
-  const [selectedFields, setSelectedFields] = useState<string[]>([]);
-  const [selectedTitles, setSelectedTitles] = useState<string[]>([]);
 
   // Goals & Bio State
   const [goals, setGoals] = useState('');
@@ -60,7 +41,6 @@ const EditInfo: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Fetch user data
   useEffect(() => {
     fetchUserData();
   }, []);
@@ -72,15 +52,6 @@ const EditInfo: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch user data');
       
       const data = await response.json();
-      
-      // Populate form with user data
-      setFirstName(data.firstName || '');
-      setLastName(data.lastName || '');
-      if (data.dateOfBirth) {
-        setDateOfBirth(new Date(data.dateOfBirth));
-      }
-      setSelectedFields(data.fields || []);
-      setSelectedTitles(data.titles || []);
       setGoals(data.goals || '');
       setBio(data.bio || '');
     } catch (error) {
@@ -98,15 +69,6 @@ const EditInfo: React.FC = () => {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!firstName.trim()) {
-      newErrors.firstName = 'First name is required';
-    }
-    if (!lastName.trim()) {
-      newErrors.lastName = 'Last name is required';
-    }
-    if (selectedFields.length === 0) {
-      newErrors.fields = 'Please select at least one field';
-    }
     const goalsWordCount = countWords(goals);
     if (goalsWordCount > MAX_GOALS_WORDS) {
       newErrors.goals = `Goals must be ${MAX_GOALS_WORDS} words or less`;
@@ -134,11 +96,6 @@ const EditInfo: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          firstName,
-          lastName,
-          dateOfBirth: dateOfBirth.toISOString(),
-          fields: selectedFields,
-          titles: selectedTitles,
           goals,
           bio,
         }),
@@ -146,7 +103,7 @@ const EditInfo: React.FC = () => {
 
       if (!response.ok) throw new Error('Failed to save profile');
 
-      Alert.alert('Success', 'Profile updated successfully!', [
+      Alert.alert('Success', 'Bio and goals updated successfully!', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (error) {
@@ -155,40 +112,6 @@ const EditInfo: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  };
-
-  const toggleField = (field: string) => {
-    setSelectedFields((prev) => {
-      if (prev.includes(field)) {
-        // Remove field and its titles
-        const newTitles = selectedTitles.filter((title) => {
-          const fieldTitles = TITLES_BY_FIELD[field] || [];
-          return !fieldTitles.includes(title);
-        });
-        setSelectedTitles(newTitles);
-        return prev.filter((f) => f !== field);
-      } else {
-        return [...prev, field];
-      }
-    });
-  };
-
-  const toggleTitle = (title: string) => {
-    setSelectedTitles((prev) =>
-      prev.includes(title) ? prev.filter((t) => t !== title) : [...prev, title]
-    );
-  };
-
-  const getAvailableTitles = () => {
-    return selectedFields.flatMap((field) => TITLES_BY_FIELD[field] || []);
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   };
 
   if (loading) {
@@ -204,7 +127,6 @@ const EditInfo: React.FC = () => {
 
   const goalsWordCount = countWords(goals);
   const bioWordCount = countWords(bio);
-  const availableTitles = getAvailableTitles();
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: Colors[theme].background }]}>
@@ -216,7 +138,7 @@ const EditInfo: React.FC = () => {
             iconColor={Colors[theme].text}
           />
         </TouchableOpacity>
-        <Text style={[styles.title, {color: Colors[theme].text}]}>Edit Info</Text>
+        <Text style={[styles.title, {color: Colors[theme].text}]}>Bio & Goals</Text>
         <TouchableOpacity onPress={handleSave} disabled={saving}>
           {saving ? (
             <ActivityIndicator size="small" color={Colors[theme].mainBlue} />
@@ -237,140 +159,6 @@ const EditInfo: React.FC = () => {
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled={true}
         >
-          {/* Personal Information Section */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, {color: Colors[theme].text}]}>Personal Information</Text>
-            
-            <TextInput
-              label="First Name"
-              value={firstName}
-              onChangeText={setFirstName}
-              mode="outlined"
-              style={styles.input}
-              contentStyle={{ fontFamily: 'EBGaramond_400Regular' }}
-              outlineColor={errors.firstName ? '#ff0000' : Colors[theme].silver}
-              activeOutlineColor={Colors[theme].mainBlue}
-              textColor={Colors[theme].text}
-              error={!!errors.firstName}
-            />
-            {errors.firstName && <Text style={styles.errorText}>{errors.firstName}</Text>}
-
-            <TextInput
-              label="Last Name"
-              value={lastName}
-              onChangeText={setLastName}
-              mode="outlined"
-              style={styles.input}
-              contentStyle={{ fontFamily: 'EBGaramond_400Regular' }}
-              outlineColor={errors.lastName ? '#ff0000' : Colors[theme].silver}
-              activeOutlineColor={Colors[theme].mainBlue}
-              textColor={Colors[theme].text}
-              error={!!errors.lastName}
-            />
-            {errors.lastName && <Text style={styles.errorText}>{errors.lastName}</Text>}
-
-            <TouchableOpacity
-              style={[styles.dateButton, { borderColor: Colors[theme].silver }]}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={[styles.dateLabel, {color: Colors[theme].textSecondary}]}>Date of Birth</Text>
-              <Text style={[styles.dateButtonText, {color: Colors[theme].text}]}>
-                {formatDate(dateOfBirth)}
-              </Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={dateOfBirth}
-                mode="date"
-                display="default"
-                maximumDate={new Date()}
-                onChange={(event, selectedDate) => {
-                  setShowDatePicker(Platform.OS === 'ios');
-                  if (selectedDate) {
-                    setDateOfBirth(selectedDate);
-                  }
-                }}
-              />
-            )}
-          </View>
-
-          {/* Fields Section */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, {color: Colors[theme].text}]}>Fields</Text>
-            {errors.fields && <Text style={styles.errorText}>{errors.fields}</Text>}
-            <View style={styles.tagsContainer}>
-              {FIELDS.map((field) => {
-                const isSelected = selectedFields.includes(field);
-                return (
-                  <TouchableOpacity
-                    key={field}
-                    style={[
-                      styles.tag,
-                      {
-                        backgroundColor: isSelected
-                          ? Colors[theme].mainBlue
-                          : Colors[theme].cream,
-                        borderColor: isSelected
-                          ? Colors[theme].mainBlue
-                          : Colors[theme].silver,
-                        borderWidth: 1,
-                      },
-                    ]}
-                    onPress={() => toggleField(field)}
-                  >
-                    <Text
-                      style={[
-                        styles.tagText,
-                        { color: isSelected ? Colors.light.white : Colors[theme].text },
-                      ]}
-                    >
-                      {field}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Titles Section */}
-          {selectedFields.length > 0 && availableTitles.length > 0 && (
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, {color: Colors[theme].text}]}>Titles</Text>
-              <View style={styles.tagsContainer}>
-                {availableTitles.map((title) => {
-                  const isSelected = selectedTitles.includes(title);
-                  return (
-                    <TouchableOpacity
-                      key={title}
-                      style={[
-                        styles.tag,
-                        {
-                          backgroundColor: isSelected
-                            ? Colors[theme].mainBlue
-                            : Colors[theme].cream,
-                          borderColor: isSelected
-                            ? Colors[theme].mainBlue
-                            : Colors[theme].silver,
-                          borderWidth: 1,
-                        },
-                      ]}
-                      onPress={() => toggleTitle(title)}
-                    >
-                      <Text
-                        style={[
-                          styles.tagText,
-                          { color: isSelected ? Colors.light.white : Colors[theme].text },
-                        ]}
-                      >
-                        {title}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
           {/* Goals Section */}
           <View style={styles.section}>
             <View style={styles.labelContainer}>
@@ -442,7 +230,7 @@ const EditInfo: React.FC = () => {
   );
 };
 
-export default EditInfo;
+export default EditBioGoals;
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -493,40 +281,6 @@ const styles = StyleSheet.create({
     fontFamily: 'EBGaramond_700Bold',
     marginBottom: 12,
   },
-  input: {
-    marginBottom: 10,
-    backgroundColor: 'transparent',
-  },
-  dateButton: {
-    borderWidth: 1,
-    borderRadius: 4,
-    padding: 16,
-    marginBottom: 10,
-  },
-  dateLabel: {
-    fontSize: 12,
-    fontFamily: 'EBGaramond_400Regular',
-    marginBottom: 4,
-  },
-  dateButtonText: {
-    fontSize: 16,
-    fontFamily: 'EBGaramond_400Regular',
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  tag: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  tagText: {
-    fontSize: 14,
-    fontFamily: 'EBGaramond_500Medium',
-  },
   labelContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -554,4 +308,3 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 });
-
