@@ -22,9 +22,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { api, BackendUser } from '@/lib/api';
+import { DEV_USER_ID } from '@/constants/devUser';
 
-const API_BASE_URL = 'http://localhost:3000';
-const USER_ID = "41f7f9da-dc0a-4657-a1a5-d70c062bc627"; // TODO: Get from auth context
+const USER_ID = DEV_USER_ID;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -41,6 +42,9 @@ const EditProfileInfo: React.FC = () => {
   const [dateOfBirth, setDateOfBirth] = useState<Date>(new Date(2000, 0, 1));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [role, setRole] = useState('');
+  const [location, setLocation] = useState('');
+  const [backendUser, setBackendUser] = useState<BackendUser | null>(null);
 
   // UI State
   const [loading, setLoading] = useState(true);
@@ -65,17 +69,25 @@ const EditProfileInfo: React.FC = () => {
   const fetchUserData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/users/user/${USER_ID}`);
-      if (!response.ok) throw new Error('Failed to fetch user data');
-      
-      const data = await response.json();
-      
-      setFirstName(data.firstName || '');
-      setLastName(data.lastName || '');
-      if (data.dateOfBirth) {
-        setDateOfBirth(new Date(data.dateOfBirth));
+      const { user } = await api.getUser(USER_ID);
+      setBackendUser(user);
+
+      const nameParts = user?.name?.trim().split(/\s+/) ?? [];
+      const backendFirstName = nameParts[0] ?? '';
+      const backendLastName = nameParts.slice(1).join(' ');
+
+      setFirstName(backendFirstName);
+      setLastName(backendLastName);
+      setRole(user?.role ?? '');
+      setLocation(user?.location ?? '');
+
+      if ((user as any)?.dateOfBirth) {
+        setDateOfBirth(new Date((user as any).dateOfBirth));
       }
-      setProfilePicture(data.profilePicture || null);
+
+      if ((user as any)?.profilePicture) {
+        setProfilePicture((user as any).profilePicture);
+      }
     } catch (error) {
       console.error('Error fetching user data:', error);
       Alert.alert('Error', 'Failed to load profile data. Please try again.');
@@ -98,37 +110,6 @@ const EditProfileInfo: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const uploadProfilePicture = async (uri: string) => {
-    try {
-      const formData = new FormData();
-      
-      const uriParts = uri.split('.');
-      const fileType = uriParts[uriParts.length - 1];
-      
-      formData.append('image', {
-        uri,
-        type: `image/${fileType}`,
-        name: `photo.${fileType}`,
-      } as any);
-
-      const response = await fetch(`${API_BASE_URL}/users/user/${USER_ID}/profile-picture`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error('Failed to upload image');
-      
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      throw error;
-    }
-  };
-
   const handleProfilePicturePicker = async (source: 'camera' | 'library') => {
     try {
       const options: ImagePicker.ImagePickerOptions = {
@@ -148,11 +129,12 @@ const EditProfileInfo: React.FC = () => {
       if (!result.canceled && result.assets && result.assets[0]) {
         setUploading(true);
         try {
-          const uploadedData = await uploadProfilePicture(result.assets[0].uri);
-          setProfilePicture(uploadedData.url || result.assets[0].uri);
-          Alert.alert('Success', 'Profile picture updated!');
+          // Backend support for profile picture uploads is not yet implemented.
+          // For now, we optimistically update the local preview.
+          setProfilePicture(result.assets[0].uri);
+          Alert.alert('Preview Updated', 'Profile picture preview updated locally. Persisting this change requires backend support.');
         } catch (error) {
-          Alert.alert('Error', 'Failed to upload profile picture. Please try again.');
+          Alert.alert('Error', 'Failed to update profile picture. Please try again.');
         } finally {
           setUploading(false);
         }
@@ -173,14 +155,10 @@ const EditProfileInfo: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(
-                `${API_BASE_URL}/users/user/${USER_ID}/profile-picture`,
-                { method: 'DELETE' }
-              );
-              if (!response.ok) throw new Error('Failed to delete profile picture');
+                  // Backend deletion endpoint not yet available; clear locally.
               setProfilePicture(null);
             } catch (error) {
-              Alert.alert('Error', 'Failed to delete profile picture.');
+                  Alert.alert('Error', 'Failed to update profile picture.');
             }
           },
         },
@@ -196,19 +174,18 @@ const EditProfileInfo: React.FC = () => {
 
     try {
       setSaving(true);
-      const response = await fetch(`${API_BASE_URL}/users/user/${USER_ID}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          dateOfBirth: dateOfBirth.toISOString(),
-        }),
-      });
+      const formattedName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim();
+      const payload = {
+        name:
+          formattedName ||
+          backendUser?.name ||
+          [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim() ||
+          'Unnamed User',
+        role: role || backendUser?.role || 'Creative',
+        location: location || backendUser?.location || 'Unknown',
+      };
 
-      if (!response.ok) throw new Error('Failed to save profile');
+      await api.updateUser(USER_ID, payload);
 
       Alert.alert('Success', 'Profile updated successfully!', [
         { text: 'OK', onPress: () => router.back() },

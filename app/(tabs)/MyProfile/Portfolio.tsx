@@ -18,9 +18,10 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { API_BASE_URL } from '@/lib/api';
+import { DEV_USER_ID } from '@/constants/devUser';
 
-const API_BASE_URL = 'http://localhost:3000';
-const USER_ID = "41f7f9da-dc0a-4657-a1a5-d70c062bc627"; // TODO: Get from auth context
+const USER_ID = DEV_USER_ID;
 
 interface Document {
   id?: string;

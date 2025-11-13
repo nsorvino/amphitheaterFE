@@ -15,13 +15,11 @@ import { TextInput } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
-
-const API_BASE_URL = 'http://localhost:3000';
+import { api } from '@/lib/api';
 
 // Dev profile credentials
 const DEV_EMAIL = 'dev@amphitheater.com';
 const DEV_PASSWORD = 'dev123456';
-const DEV_USER_ID = '41f7f9da-dc0a-4657-a1a5-d70c062bc627';
 
 const Login: React.FC = () => {
   const [emailOrPhone, setEmailOrPhone] = useState('');
@@ -42,30 +40,23 @@ const Login: React.FC = () => {
       setLoading(true);
       // TODO: Replace with actual login API endpoint
       // For now, we'll do a simple check and navigate
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          emailOrPhone: emailOrPhone.trim(),
-          password: password.trim(),
-        }),
+      const data = await api.login({
+        emailOrPhone: emailOrPhone.trim(),
+        password: password.trim(),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        // TODO: Store auth token and user ID
+      if (data) {
         console.log('Login successful:', data);
         router.replace('/(tabs)/ProfileQueue');
+        return;
+      }
+
+      // For dev: allow login with any credentials or dev credentials
+      if (emailOrPhone.trim() === DEV_EMAIL && password.trim() === DEV_PASSWORD) {
+        console.log('Dev login successful');
+        router.replace('/(tabs)/ProfileQueue');
       } else {
-        // For dev: allow login with any credentials or dev credentials
-        if (emailOrPhone.trim() === DEV_EMAIL && password.trim() === DEV_PASSWORD) {
-          console.log('Dev login successful');
-          router.replace('/(tabs)/ProfileQueue');
-        } else {
-          Alert.alert('Login Failed', 'Invalid credentials. Use dev@amphitheater.com / dev123456 for dev login.');
-        }
+        Alert.alert('Login Failed', 'Invalid credentials. Use dev@amphitheater.com / dev123456 for dev login.');
       }
     } catch (error) {
       console.error('Login error:', error);

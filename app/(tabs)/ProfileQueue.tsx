@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   ScrollView,
   Text,
@@ -17,12 +17,14 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { api, BackendUser } from '@/lib/api';
+import { DEV_USER_ID } from '@/constants/devUser';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const MARGIN_HORIZONTAL = SCREEN_WIDTH * 0.03;
 
-const userId = "41f7f9da-dc0a-4657-a1a5-d70c062bc627";
+const CURRENT_USER_ID = DEV_USER_ID;
 
 // Define types
 interface Profile {
@@ -129,35 +131,161 @@ const MOCK_PROFILES: Profile[] = [
   },
 ];
 
+const FALLBACK_PROFILE_IMAGE = 'https://picsum.photos/seed/placeholder-profile/800/1200';
+
+const mapBackendUserToProfile = (user: BackendUser): Profile => {
+  const [city, state] = user.location?.split(',').map((part) => part.trim()) || [];
+
+  return {
+    id: user.id.toString(),
+    name: user.name ?? 'Unknown User',
+    imageUrl: FALLBACK_PROFILE_IMAGE,
+    bio: undefined,
+    goals: undefined,
+    age: undefined,
+    location:
+      city && state
+        ? {
+            city,
+            state,
+          }
+        : undefined,
+    additionalImages: [],
+  };
+};
+
 const ProfileQueue: React.FC = () => {
   const colorScheme = useColorScheme();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const PAGE_SIZE = 10;
+  const PRELOAD_THRESHOLD = 3;
   const [index, setIndex] = useState(0);
-  const [profiles, setProfiles] = useState<Profile[]>(MOCK_PROFILES);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
+  const initialLoadRef = useRef(false);
+
+  const loadProfiles = useCallback(
+    async (reset = false) => {
+      if (!reset && (loadingMore || !hasMore)) {
+        return;
+      }
+
+      const pageOffset = reset ? 0 : offset;
+
+      if (reset) {
+        setLoading(true);
+        setProfiles([]);
+        setIndex(0);
+        setHasMore(true);
+        setOffset(0);
+      } else {
+        setLoadingMore(true);
+      }
+
+      try {
+        const queue = await api.getProfileQueue(CURRENT_USER_ID, {
+          offset: pageOffset,
+          limit: PAGE_SIZE,
+        });
+
+        const ids = Array.isArray(queue)
+          ? queue
+              .map((item) => {
+                if (typeof item === 'number' || typeof item === 'string') {
+                  return item;
+                }
+                return item?.id;
+              })
+              .filter(
+                (value): value is number | string =>
+                  typeof value === 'number' || typeof value === 'string'
+              )
+          : [];
+
+        if (ids.length === 0) {
+          if (reset) {
+            console.warn('Profile queue empty, falling back to mock data');
+            setProfiles(MOCK_PROFILES);
+          }
+          setHasMore(false);
+          return;
+        }
+
+        const users = await Promise.all(
+          ids.map(async (queueUserId) => {
+            try {
+              const { user } = await api.getUser(queueUserId);
+              return mapBackendUserToProfile(user);
+            } catch (innerError) {
+              console.warn(`Failed to fetch user ${queueUserId}`, innerError);
+              return undefined;
+            }
+          })
+        );
+
+        const validProfiles = users.filter((profile): profile is Profile => Boolean(profile));
+
+        if (validProfiles.length === 0) {
+          if (reset) {
+            console.warn('No valid profiles returned from backend, using mock data');
+            setProfiles(MOCK_PROFILES);
+            setHasMore(false);
+          }
+          return;
+        }
+
+        let addedCount = 0;
+        setProfiles((prev) => {
+          const base = reset ? [] : prev;
+          const existingIds = new Set(base.map((profile) => profile.id));
+          const additional = validProfiles.filter((profile) => !existingIds.has(profile.id));
+          addedCount = additional.length;
+          return reset ? additional : [...base, ...additional];
+        });
+
+        setOffset((prev) => (reset ? ids.length : prev + ids.length));
+        if (ids.length < PAGE_SIZE || (!reset && addedCount === 0)) {
+          setHasMore(false);
+        }
+      } catch (error) {
+        console.error(reset ? 'Error fetching profiles, using mock data:' : 'Error fetching more profiles:', error);
+        if (reset) {
+          setProfiles(MOCK_PROFILES);
+          setHasMore(false);
+        }
+      } finally {
+        if (reset) {
+          setLoading(false);
+        } else {
+          setLoadingMore(false);
+        }
+      }
+    },
+    [offset, hasMore, loadingMore]
+  );
 
   // Fetch profiles from API
   useEffect(() => {
-    const fetchAllProfiles = async () => {
-      try {
-        const response = await fetch(`http://localhost:3000/users/profile-queue/${userId}`);
-        const data = await response.json();
-        console.log('Data received from profile-queue:', data);
+    if (!initialLoadRef.current) {
+      initialLoadRef.current = true;
+      loadProfiles(true);
+    }
+  }, [loadProfiles]);
 
-        if (Array.isArray(data) && data.length > 0) {
-          setProfiles(data);
-        } else {
-          console.warn('API did not return valid data, using mock data:', data);
-          setProfiles(MOCK_PROFILES);
-        }
-      } catch (error) {
-        console.error('Error fetching profiles, using mock data:', error);
-        setProfiles(MOCK_PROFILES);
-      }
-    };
-    fetchAllProfiles();
-  }, []);
+  useEffect(() => {
+    if (loading || loadingMore || !hasMore) {
+      return;
+    }
+
+    if (profiles.length > 0 && profiles.length - index <= PRELOAD_THRESHOLD) {
+      loadProfiles(false);
+    }
+  }, [index, profiles, hasMore, loading, loadingMore, loadProfiles]);
 
   useEffect(() => {
     if (profiles.length === 0 || !profiles[index]) return;
@@ -165,20 +293,10 @@ const ProfileQueue: React.FC = () => {
     // Reset position whenever current profile changes
     position.setValue({ x: 0, y: 0 });
 
-    const fetchProfile = async () => {
-      const current = profiles[index];
-      if (!current?.id) return;
-      console.log(`Fetching data for profile id: ${current.id}`);
-      try {
-        const response = await fetch(`http://localhost:3000/users/user/${current.id}`);
-        const data = await response.json();
-        console.log(`Data received for user ${current.id}:`, data);
-      } catch (error) {
-        console.error('Error fetching profile:', error);
-      }
-    };
-
-    fetchProfile();
+    const current = profiles[index];
+    if (current?.id) {
+      console.log(`Viewing profile ${current.id}`);
+    }
   }, [index, profiles]);
 
   const rotate = position.x.interpolate({
@@ -249,17 +367,12 @@ const ProfileQueue: React.FC = () => {
       toValue: { x: SCREEN_WIDTH + 100, y: 0 },
       useNativeDriver: false,
     }).start(() => {
-      fetch(`http://localhost:3000/users/users/${userId}/like/${likedUserId}`, {
-        method: 'POST',
-      })
-        .then(response => {
-          if (response.ok) {
-            console.log('User liked successfully.');
-          } else {
-            console.error('Error liking user:', response.statusText);
-          }
+      api
+        .likeUser(CURRENT_USER_ID, likedUserId)
+        .then(() => {
+          console.log('User liked successfully.');
         })
-        .catch(error => {
+        .catch((error) => {
           console.error('Error liking user:', error);
         });
 
@@ -274,17 +387,12 @@ const ProfileQueue: React.FC = () => {
       toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
       useNativeDriver: false,
     }).start(() => {
-      fetch(`http://localhost:3000/users/users/${userId}/dislike/${dislikedUserId}`, {
-        method: 'POST',
-      })
-        .then(response => {
-          if (response.ok) {
-            console.log('User disliked successfully.');
-          } else {
-            console.error('Error disliking user:', response.statusText);
-          }
+      api
+        .dislikeUser(CURRENT_USER_ID, dislikedUserId)
+        .then(() => {
+          console.log('User disliked successfully.');
         })
-        .catch(error => {
+        .catch((error) => {
           console.error('Error disliking user:', error);
         });
 
@@ -308,14 +416,28 @@ const ProfileQueue: React.FC = () => {
 
   const renderProfiles = () => {
     if (!Array.isArray(profiles) || profiles.length === 0) {
+      if (loading) {
+        return (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={[styles.loadingText, { color: Colors[colorScheme ?? "light"].text }]}>Loading profiles...</Text>
+          </View>
+        );
+      }
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={[styles.loadingText, { color: Colors[colorScheme ?? "light"].text }]}>Loading profiles...</Text>
+          <Text style={[styles.loadingText, { color: Colors[colorScheme ?? "light"].text }]}>No profiles available right now.</Text>
         </View>
       );
     }
 
     if (index >= profiles.length) {
+      if (loadingMore) {
+        return (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={[styles.loadingText, { color: Colors[colorScheme ?? "light"].text }]}>Loading more profiles...</Text>
+          </View>
+        );
+      }
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <Text style={[styles.loadingText, { color: Colors[colorScheme ?? "light"].text }]}>No more profiles available.</Text>

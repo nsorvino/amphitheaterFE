@@ -18,9 +18,10 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { api } from '@/lib/api';
+import { DEV_USER_ID } from '@/constants/devUser';
 
-const API_BASE_URL = 'http://localhost:3000';
-const USER_ID = "41f7f9da-dc0a-4657-a1a5-d70c062bc627"; // TODO: Get from auth context
+const USER_ID = DEV_USER_ID;
 
 const MAX_GOALS_WORDS = 300;
 
@@ -43,11 +44,8 @@ const EditGoals: React.FC = () => {
   const fetchUserData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/users/user/${USER_ID}`);
-      if (!response.ok) throw new Error('Failed to fetch user data');
-      
-      const data = await response.json();
-      setGoals(data.goals || '');
+      const profileSettings = await api.getProfileSettings(USER_ID).catch(() => undefined);
+      setGoals(profileSettings?.goals ?? '');
     } catch (error) {
       console.error('Error fetching user data:', error);
       Alert.alert('Error', 'Failed to load profile data. Please try again.');
@@ -80,17 +78,7 @@ const EditGoals: React.FC = () => {
 
     try {
       setSaving(true);
-      const response = await fetch(`${API_BASE_URL}/users/user/${USER_ID}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          goals,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to save profile');
+      await api.updateFilters(USER_ID, { goals });
 
       Alert.alert('Success', 'Goals updated successfully!', [
         { text: 'OK', onPress: () => router.back() },

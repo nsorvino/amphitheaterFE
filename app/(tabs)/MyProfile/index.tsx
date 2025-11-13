@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ScrollView, View, StyleSheet, Text, TouchableOpacity, SafeAreaView, Dimensions, Image, Modal, StatusBar } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, View, StyleSheet, Text, TouchableOpacity, SafeAreaView, Dimensions, Image, Modal, StatusBar, ActivityIndicator } from 'react-native';
 import { IconButton, Card } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -8,11 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { api } from '@/lib/api';
+import { DEV_USER_ID } from '@/constants/devUser';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Mock user data - this will eventually come from your backend/state management
-const MOCK_USER: {
+const DEFAULT_PROFILE: {
   firstName: string;
   lastName: string;
   dateOfBirth: Date;
@@ -47,7 +49,61 @@ const MyProfile: React.FC = () => {
     const tabBarHeight = useBottomTabBarHeight();
     const insets = useSafeAreaInsets();
     const theme = (colorScheme ?? "light") as "light" | "dark";
+    const [profile, setProfile] = useState(DEFAULT_PROFILE);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [selectedHeadshot, setSelectedHeadshot] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                setLoading(true);
+                const results = await Promise.allSettled([
+                    api.getUser(DEV_USER_ID),
+                    api.getFilters(DEV_USER_ID),
+                    api.getProfileSettings(DEV_USER_ID),
+                ]);
+
+                const userResult = results[0];
+                const filtersResult = results[1];
+                const profileSettingsResult = results[2];
+
+                const backendUser = userResult.status === 'fulfilled' ? userResult.value.user : null;
+                const filters =
+                    filtersResult.status === 'fulfilled' ? filtersResult.value : null;
+                const profileSettings =
+                    profileSettingsResult.status === 'fulfilled' ? profileSettingsResult.value : null;
+
+                if (backendUser) {
+                    const nameParts = backendUser.name?.trim().split(/\s+/) ?? [];
+                    const firstName = nameParts[0] ?? '';
+                    const lastName = nameParts.slice(1).join(' ');
+
+                    setProfile((prev) => ({
+                        ...prev,
+                        firstName: firstName || prev.firstName,
+                        lastName: lastName || prev.lastName,
+                        fields:
+                            filters?.filter_roles?.split(',')
+                                .map((field) => field.trim())
+                                .filter(Boolean) ?? prev.fields,
+                        titles: backendUser.role
+                            ? backendUser.role.split(',').map((title) => title.trim())
+                            : prev.titles,
+                        goals: profileSettings?.goals ?? prev.goals,
+                        bio: profileSettings?.bio ?? prev.bio,
+                    }));
+                }
+            } catch (fetchError) {
+                console.error('Failed to load profile data from backend', fetchError);
+                setError('Unable to load latest profile information. Showing saved data.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchProfile();
+    }, []);
 
     // Calculate age from date of birth
     const calculateAge = (dob: Date): number => {
@@ -60,7 +116,7 @@ const MyProfile: React.FC = () => {
         return age;
     };
 
-    const age = calculateAge(MOCK_USER.dateOfBirth);
+    const age = profile.dateOfBirth ? calculateAge(profile.dateOfBirth) : null;
 
     const handleSettingsPress = () => {
         router.push('/(tabs)/MyProfile/Preferences');
@@ -85,7 +141,20 @@ const MyProfile: React.FC = () => {
                 contentContainerStyle={[styles.container, { backgroundColor: Colors[theme].background, paddingTop: insets.top + 45, paddingBottom: tabBarHeight + 20 }]}
                 showsVerticalScrollIndicator={false}
             >
-                               {/* Header with Avatar and Basic Info - Clickable */}
+                {error && (
+                    <View style={[styles.statusBanner, { backgroundColor: Colors[theme].cream }]}>
+                        <Text style={[styles.statusBannerText, { color: Colors[theme].text }]}>{error}</Text>
+                    </View>
+                )}
+
+                {loading && (
+                    <View style={styles.loadingState}>
+                        <ActivityIndicator color={Colors[theme].mainBlue} />
+                        <Text style={[styles.loadingLabel, { color: Colors[theme].textSecondary }]}>Refreshing profile...</Text>
+                    </View>
+                )}
+
+               {/* Header with Avatar and Basic Info - Clickable */}
                <TouchableOpacity
                    style={styles.avatarSection}
                    onPress={() => router.push('/(tabs)/MyProfile/EditProfileInfo')}
@@ -94,7 +163,7 @@ const MyProfile: React.FC = () => {
                     <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
                         <View style={[styles.imageContainer, { borderColor: Colors[theme].mainBlue }]}>
                             <Image 
-                                source={{ uri: MOCK_USER.profilePicture }} 
+                                source={{ uri: profile.profilePicture }} 
                                 style={styles.largeAvatar}
                                 resizeMode="cover"
                             />
@@ -105,9 +174,11 @@ const MyProfile: React.FC = () => {
                     </View>
                     <View style={styles.textSection}>
                         <Text style={[styles.name, {color: Colors[theme].text}]}>
-                            {MOCK_USER.firstName} {MOCK_USER.lastName}
+                            {profile.firstName} {profile.lastName}
                         </Text>
-                        <Text style={[styles.info, {color: Colors[theme].textSecondary}]}>{age} years old</Text>
+                        <Text style={[styles.info, {color: Colors[theme].textSecondary}]}>
+                            {age ? `${age} years old` : 'Age not set'}
+                        </Text>
                     </View>
                 </TouchableOpacity>
 
@@ -122,7 +193,7 @@ const MyProfile: React.FC = () => {
                         <Ionicons name="chevron-forward" size={20} color={Colors[theme].textSecondary} />
                     </View>
                     <View style={styles.tagsContainer}>
-                        {MOCK_USER.fields.map((field, index) => (
+                        {profile.fields.map((field, index) => (
                             <View 
                                 key={`field-${index}`} 
                                 style={[styles.tag, { backgroundColor: Colors[theme].cream, borderColor: Colors[theme].mainBlue, borderWidth: 1 }]}
@@ -130,7 +201,7 @@ const MyProfile: React.FC = () => {
                                 <Text style={[styles.tagText, { color: Colors[theme].mainBlue }]}>{field}</Text>
                             </View>
                         ))}
-                        {MOCK_USER.titles.map((title, index) => (
+                        {profile.titles.map((title, index) => (
                             <View 
                                 key={`title-${index}`} 
                                 style={[styles.tag, { backgroundColor: Colors[theme].mainBlue }]}
@@ -154,7 +225,7 @@ const MyProfile: React.FC = () => {
                     <Card style={[styles.card, { backgroundColor: Colors[theme].cream }]}>
                         <Card.Content>
                             <Text style={[styles.textContent, {color: Colors[theme].text}]} numberOfLines={3}>
-                                {MOCK_USER.goals}
+                                {profile.goals}
                             </Text>
                         </Card.Content>
                     </Card>
@@ -173,7 +244,7 @@ const MyProfile: React.FC = () => {
                     <Card style={[styles.card, { backgroundColor: Colors[theme].cream }]}>
                         <Card.Content>
                             <Text style={[styles.textContent, {color: Colors[theme].text}]} numberOfLines={3}>
-                                {MOCK_USER.bio}
+                                {profile.bio}
                             </Text>
                         </Card.Content>
                     </Card>
@@ -190,13 +261,13 @@ const MyProfile: React.FC = () => {
                         <Ionicons name="chevron-forward" size={20} color={Colors[theme].textSecondary} />
                     </TouchableOpacity>
                     
-                    {MOCK_USER.resume || MOCK_USER.portfolio ? (
+                    {profile.resume || profile.portfolio ? (
                         <>
-                            {MOCK_USER.resume && (
+                            {profile.resume && (
                                 <TouchableOpacity
                                     onPress={() => {
                                         // TODO: View resume - open PDF viewer or navigate to view screen
-                                        console.log('View resume:', MOCK_USER.resume?.name);
+                                        console.log('View resume:', profile.resume?.name);
                                     }}
                                     activeOpacity={0.7}
                                 >
@@ -206,18 +277,18 @@ const MyProfile: React.FC = () => {
                                             <View style={styles.documentInfo}>
                                                 <Text style={[styles.documentName, {color: Colors[theme].text}]}>Resume</Text>
                                                 <Text style={[styles.documentSubtext, {color: Colors[theme].textSecondary}]}>
-                                                    {MOCK_USER.resume?.name || 'Resume'}
+                                                    {profile.resume?.name || 'Resume'}
                                                 </Text>
                                             </View>
                                         </Card.Content>
                                     </Card>
                                 </TouchableOpacity>
                             )}
-                            {MOCK_USER.portfolio && (
+                            {profile.portfolio && (
                                 <TouchableOpacity
                                     onPress={() => {
                                         // TODO: View portfolio - open PDF viewer or navigate to view screen
-                                        console.log('View portfolio:', MOCK_USER.portfolio?.name);
+                                        console.log('View portfolio:', profile.portfolio?.name);
                                     }}
                                     activeOpacity={0.7}
                                 >
@@ -227,7 +298,7 @@ const MyProfile: React.FC = () => {
                                             <View style={styles.documentInfo}>
                                                 <Text style={[styles.documentName, {color: Colors[theme].text}]}>Portfolio</Text>
                                                 <Text style={[styles.documentSubtext, {color: Colors[theme].textSecondary}]}>
-                                                    {MOCK_USER.portfolio?.name || 'Portfolio'}
+                                                    {profile.portfolio?.name || 'Portfolio'}
                                                 </Text>
                                             </View>
                                         </Card.Content>
@@ -253,14 +324,14 @@ const MyProfile: React.FC = () => {
                             <Text style={[styles.sectionTitle, {color: Colors[theme].text}]}>Headshots</Text>
                             <Ionicons name="chevron-forward" size={20} color={Colors[theme].textSecondary} />
                         </TouchableOpacity>
-                        {MOCK_USER.headshots && MOCK_USER.headshots.length > 0 ? (
+                        {profile.headshots && profile.headshots.length > 0 ? (
                             <ScrollView 
                                 horizontal 
                                 showsHorizontalScrollIndicator={false}
                                 style={styles.headshotsContainer}
                                 contentContainerStyle={styles.headshotsContent}
                             >
-                                {MOCK_USER.headshots.map((headshot, index) => (
+                                {profile.headshots.map((headshot, index) => (
                                     <TouchableOpacity
                                         key={index}
                                         onPress={() => setSelectedHeadshot(headshot.uri)}
@@ -549,6 +620,29 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: 'EBGaramond_400Regular',
         textAlign: 'center',
+    },
+    statusBanner: {
+        borderRadius: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        marginBottom: 16,
+    },
+    statusBannerText: {
+        fontSize: 14,
+        fontFamily: 'EBGaramond_500Medium',
+        textAlign: 'center',
+    },
+    loadingState: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        marginBottom: 16,
+    },
+    loadingLabel: {
+        marginLeft: 10,
+        fontSize: 14,
+        fontFamily: 'EBGaramond_400Regular',
     },
     fullscreenModal: {
         flex: 1,

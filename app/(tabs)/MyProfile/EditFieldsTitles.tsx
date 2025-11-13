@@ -17,9 +17,10 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
+import { api, BackendUser } from '@/lib/api';
+import { DEV_USER_ID } from '@/constants/devUser';
 
-const API_BASE_URL = 'http://localhost:3000';
-const USER_ID = "41f7f9da-dc0a-4657-a1a5-d70c062bc627"; // TODO: Get from auth context
+const USER_ID = DEV_USER_ID;
 
 const FIELDS = ['Film', 'T.V.', 'Video', 'Music'];
 const TITLES_BY_FIELD: Record<string, string[]> = {
@@ -39,6 +40,7 @@ const EditFieldsTitles: React.FC = () => {
   // Fields & Titles State
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [selectedTitles, setSelectedTitles] = useState<string[]>([]);
+  const [backendUser, setBackendUser] = useState<BackendUser | null>(null);
 
   // UI State
   const [loading, setLoading] = useState(true);
@@ -52,20 +54,24 @@ const EditFieldsTitles: React.FC = () => {
   const fetchUserData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/users/user/${USER_ID}`);
-      if (!response.ok) throw new Error('Failed to fetch user data');
-      
-      const data = await response.json();
-      
-      // Ensure fields and titles are arrays
-      const fields = Array.isArray(data.fields) ? data.fields : [];
-      const titles = Array.isArray(data.titles) ? data.titles : [];
-      
-      setSelectedFields(fields);
-      setSelectedTitles(titles);
-      
-      console.log('Fetched fields:', fields);
-      console.log('Fetched titles:', titles);
+      const [userResult, filtersResult] = await Promise.all([
+        api.getUser(USER_ID),
+        api.getFilters(USER_ID),
+      ]);
+
+      const user = userResult.user;
+      const filters = filtersResult;
+
+      setBackendUser(user);
+      const parsedTitles = user.role
+        ? user.role.split(',').map((title) => title.trim()).filter(Boolean)
+        : [];
+      const parsedFields = filters.filter_roles
+        ? filters.filter_roles.split(',').map((field) => field.trim()).filter(Boolean)
+        : [];
+
+      setSelectedFields(parsedFields);
+      setSelectedTitles(parsedTitles);
     } catch (error) {
       console.error('Error fetching user data:', error);
       Alert.alert('Error', 'Failed to load profile data. Please try again.');
@@ -93,18 +99,22 @@ const EditFieldsTitles: React.FC = () => {
 
     try {
       setSaving(true);
-      const response = await fetch(`${API_BASE_URL}/users/user/${USER_ID}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fields: selectedFields,
-          titles: selectedTitles,
-        }),
+      const currentUser = backendUser;
+
+      if (!currentUser) {
+        throw new Error('Missing user data');
+      }
+
+      const updatedTitles = selectedTitles.join(', ');
+      await api.updateUser(USER_ID, {
+        name: currentUser.name || 'Unnamed User',
+        role: updatedTitles || currentUser.role || '',
+        location: currentUser.location || 'Unknown',
       });
 
-      if (!response.ok) throw new Error('Failed to save profile');
+      await api.updateFilters(USER_ID, {
+        filter_roles: selectedFields.length > 0 ? selectedFields.join(', ') : null,
+      });
 
       Alert.alert('Success', 'Fields and titles updated successfully!', [
         { text: 'OK', onPress: () => router.back() },

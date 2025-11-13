@@ -290,6 +290,20 @@ const MyChats: React.FC = () => {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 colors={[
+                  Colors[theme].background,
+                  Colors[theme].background,
+                  'rgba(255,255,255,0.6)',
+                  'rgba(255,255,255,0.3)',
+                  'rgba(255,255,255,0)',
+                ]}
+                locations={[0, 0.3, 0.55, 0.8, 1]}
+                style={styles.fadeGradientLeft}
+                pointerEvents="none"
+              />
+              <LinearGradient
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                colors={[
                   'rgba(255,255,255,0)',
                   'rgba(255,255,255,0.3)',
                   'rgba(255,255,255,0.6)',
@@ -549,6 +563,14 @@ const styles = StyleSheet.create({
   fadeGradient: {
     position: 'absolute',
     right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
+    pointerEvents: 'none',
+  },
+  fadeGradientLeft: {
+    position: 'absolute',
+    left: 0,
     top: 0,
     bottom: 0,
     width: 40,
